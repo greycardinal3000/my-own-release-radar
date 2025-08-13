@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h2 class="card-title mb-2">
+                            <i class="fas fa-user-circle text-success me-2"></i>
+                            Welcome, {{ user.display_name }}!
+                        </h2>
+                        <p class="text-muted mb-0">
+                            <i class="fas fa-users me-1"></i>
+                            {{ user.followers.total }} followers
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        {% if user.images %}
+                            <img src="{{ user.images[0].url }}" alt="Profile" class="rounded-circle" width="80" height="80">
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-magic" style="font-size: 3rem; color: #1db954;"></i>
+                </div>
+                <h4 class="card-title">Generate Weekly Playlist</h4>
+                <p class="card-text">
+                    Create a playlist with the latest releases from your followed artists and their related artists from the past week.
+                </p>
+                <button id="generateBtn" class="btn btn-spotify btn-lg" onclick="generatePlaylist()">
+                    <span class="loading-spinner spinner-border spinner-border-sm me-2" role="status"></span>
+                    <span class="button-text">
+                        <i class="fas fa-play me-2"></i>Generate Playlist
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-info-circle text-info me-2"></i>
+                    How it works
+                </h5>
+                <div class="timeline">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="badge bg-success rounded-pill me-3">1</div>
+                        <span>Fetch your followed artists</span>
+                    </div>
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="badge bg-success rounded-pill me-3">2</div>
+                        <span>Find related artists ("Fans also like")</span>
+                    </div>
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="badge bg-success rounded-pill me-3">3</div>
+                        <span>Search for releases from the last 7 days</span>
+                    </div>
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="badge bg-success rounded-pill me-3">4</div>
+                        <span>Create a private playlist in your account</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div id="resultCard" class="card" style="display: none;">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    Playlist Generated!
+                </h5>
+                <div id="resultContent"></div>
+            </div>
+        </div>
+        
+        <div id="errorCard" class="card border-danger" style="display: none;">
+            <div class="card-body">
+                <h5 class="card-title text-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error
+                </h5>
+                <div id="errorContent"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function generatePlaylist() {
+    showLoading('generateBtn');
+    
+    // Hide previous results
+    document.getElementById('resultCard').style.display = 'none';
+    document.getElementById('errorCard').style.display = 'none';
+    
+    try {
+        const response = await fetch('/generate-playlist', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showSuccess(data);
+        } else if (data.message) {
+            showInfo(data.message);
+        } else {
+            showError(data.error || 'Unknown error occurred');
+        }
+    } catch (error) {
+        showError('Network error: ' + error.message);
+    } finally {
+        hideLoading('generateBtn', 'Generate Playlist');
+    }
+}
+
+function showSuccess(data) {
+    const resultCard = document.getElementById('resultCard');
+    const resultContent = document.getElementById('resultContent');
+    
+    let tracksHtml = '';
+    if (data.tracks && data.tracks.length > 0) {
+        tracksHtml = `
+            <h6 class="mt-3">Preview of tracks added:</h6>
+            <div class="tracks-preview">
+                ${data.tracks.map(track => `
+                    <div class="track-item">
+                        <strong>${track.name}</strong> by ${track.artist}
+                        <br><small class="text-muted">${track.album} (${track.release_date})</small>
+                    </div>
+                `).join('')}
+                ${data.tracks_added > data.tracks.length ? `
+                    <div class="text-muted mt-2">
+                        <small>... and ${data.tracks_added - data.tracks.length} more tracks</small>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+    
+    resultContent.innerHTML = `
+        <div class="alert alert-success">
+            <h6><strong>${data.playlist_name}</strong></h6>
+            <p class="mb-2">Successfully added ${data.tracks_added} tracks to your playlist!</p>
+            <a href="${data.playlist_url}" target="_blank" class="btn btn-success btn-sm">
+                <i class="fab fa-spotify me-1"></i>Open in Spotify
+            </a>
+        </div>
+        ${tracksHtml}
+    `;
+    
+    resultCard.style.display = 'block';
+    resultCard.scrollIntoView({ behavior: 'smooth' });
+}
+
+function showInfo(message) {
+    const resultCard = document.getElementById('resultCard');
+    const resultContent = document.getElementById('resultContent');
+    
+    resultContent.innerHTML = `
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            ${message}
+        </div>
+        <p class="text-muted">
+            Try following more artists on Spotify or check back later for new releases!
+        </p>
+    `;
+    
+    resultCard.style.display = 'block';
+    resultCard.scrollIntoView({ behavior: 'smooth' });
+}
+
+function showError(error) {
+    const errorCard = document.getElementById('errorCard');
+    const errorContent = document.getElementById('errorContent');
+    
+    errorContent.innerHTML = `
+        <div class="alert alert-danger">
+            ${error}
+        </div>
+        <p class="text-muted">
+            Please try again or contact support if the problem persists.
+        </p>
+    `;
+    
+    errorCard.style.display = 'block';
+    errorCard.scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+{% endblock %}
